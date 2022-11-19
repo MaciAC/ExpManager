@@ -1,0 +1,6 @@
+[submodule "CleanUNet"]
+	path = CleanUNet
+	url = https://github.com/MaciAC/CleanUNet
+[submodule "DNS-Challenge"]
+	path = DNS-Challenge
+	url = https://github.com/MaciAC/DNS-Challenge
