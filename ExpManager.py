@@ -1,14 +1,14 @@
-from json import load, dump
+from json import load
 from os import mkdir, listdir
 from os.path import join
 import constants
 from DatasetManager import DatasetManager
-
+from subprocess import call
 
 class ExpManager:
 
     def __init__(self):
-        self.experimets = []
+        self.experiments = []
 
         try:
             listdir(constants.EXP_DIR)
@@ -20,7 +20,7 @@ class ExpManager:
         for exp in [x for x in listdir(constants.EXP_DIR) if 'exp' in x]:
             with open(join(constants.EXP_DIR, exp, 'config.json')) as json_file:
                 data = load(json_file)
-                self.experimets.append(data)
+                self.experiments.append(data)
                 if int(data['id']) > max_id:
                     max_id = int(data['id'])
         self.last_exp = max_id
@@ -48,8 +48,6 @@ class ExpManager:
             print("No dataset related to id %s" % dataset_id)
             self.datasetManager.create_dataset()
             data['dataset'] = self.datasetManager.last_dataset
-        with open(join(constants.EXP_DIR, "exp_%s" % str(exp_id), "config.json"), 'w') as json_file:
-            dump(data, json_file)
 
 
     def print_datasets_and_experiments(self):
@@ -61,11 +59,45 @@ class ExpManager:
                                                                 d['description'],
                                                                 d['size']))
         print('Experimets:')
-        for e in self.experimets:
+        for e in self.experiments:
             print(" Id: {}\n Dataset id: {}\n Description:{}".format(
                                                                 e['id'],
                                                                 e['dataset'],
                                                                 e['description']))
+
+
+    def choose_experiment(self):
+        print('Experimets:')
+        for e in self.experiments:
+            print(" Id: {}\n Dataset id: {}\n Description:{}".format(
+                                                                e['id'],
+                                                                e['dataset'],
+                                                                e['description']))
+        ok = False
+        options = [str(x) for x in range(len(self.experiments))]
+        while not ok:
+                option = input( "Choose experiment id" )
+                if option in options:
+                    ok = True
+        return int(option)
+
+
+    def run_exp(self):
+        exp_id = self.choose_experiment()
+        exp = self.experiments[exp_id]
+        dataset_id = exp["dataset"]
+        vol_data = "/home/mamoros/exp/datasets/dataset_%s:/dataset " \
+                   "-v /home/mamoros/exp/exp_%s:/exp/" % (dataset_id, exp_id)
+        with open("/home/mamoros/tmp/output.log", "a") as output:
+            call(constants.DOCKER_RUN.format(params="-it --rm --gpus all",
+                                        vol_code="/home/mamoros/build/CleanUNet:/model",
+                                        vol_data=vol_data,
+                                        name="CleanUNet",
+                                        img="mamoros:CleanUNet",
+                                        cmd="python3 model/train.py -c exp/config.json"),
+                 shell=True,
+                 stdout=output,
+                 stderr=output)
 
 
     def prompt(self):

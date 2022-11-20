@@ -1,4 +1,4 @@
-from os import listdir, popen, chmod
+from os import listdir, popen, rename
 from json import load, dump
 from os.path import join
 import constants
@@ -25,16 +25,21 @@ class DatasetManager:
         self.last_dataset = max_id
 
 
-    def create_dataset_synthetic(self):
+    def create_dataset_synthetic(self, mode):
+        folder = "/home/mamoros/exp/datasets/dataset_%s/%s_set" % (str(int(self.last_dataset) + 1),
+                                                                   constants.DATASET_MODES[mode])
         with open("/home/mamoros/tmp/output.log", "a") as output:
-            call(constants.DOCKER_RUN.format(vol_code="/home/mamoros/build/DNS-Challenge/:/DNS-Challenge",
-                                        vol_data="/home/mamoros/exp/datasets/real:/datasets -v /home/mamoros/exp/datasets/dataset_%s/:/out" % str(int(self.last_dataset) + 1),
+            call(constants.DOCKER_RUN.format(params="-it --rm",
+                                        vol_code="/home/mamoros/build/DNS-Challenge/:/DNS-Challenge",
+                                        vol_data="/home/mamoros/exp/datasets/real:/datasets " \
+                                                 "-v %s:/out" % folder,
                                         name="DNS-Challenge",
                                         img="mamoros:DNS_challenge",
                                         cmd="python3 /DNS-Challenge/noisyspeech_synthesizer_singleprocess.py"),
                  shell=True,
                  stdout=output,
                  stderr=output)
+        return folder
 
     def save_snippet(self, snippets, min_length, sr_transcode=16000):
         data_array = []
@@ -130,8 +135,19 @@ class DatasetManager:
                 j += 1
 
 
-    def create_dataset_real(self):
+    def create_dataset_real(self, mode):
         self.cp_nfsdataset_audio2snippet('/home/mamoros/dataset/dataset.csv', copy=True, max_samples=0, debug=False, out_sr=8000)
+
+
+    def rename_files(self, folder):
+        dirs = listdir(folder)
+        for d in dirs:
+            base_path = join(folder, d)
+            files = listdir(base_path)
+            for file in files:
+                new_file = join(base_path, '_'.join(file.rsplit('_')[-2:]))
+                rename(join(base_path, file), new_file)
+
 
     def create_dataset(self):
         ok = False
@@ -141,20 +157,31 @@ class DatasetManager:
                             "2. Real\n")
             if option in options:
                 ok = True
+        ok=False
+        modes = [str(x) for x in range(1,4)]
+        while not ok:
+            mode = input( "1. Train\n" \
+                            "2. Test\n" \
+                            "3. Valid\n")
+            if mode in modes:
+                ok = True
         if option == '1':
-            self.create_dataset_synthetic()
+            folder = self.create_dataset_synthetic(mode)
             type_ = "synth"
         if option == '2':
-            self.create_dataset_real()
+            folder = self.create_dataset_real(mode)
             type_ = "real"
+
+        self.rename_files(folder)
 
         self.last_dataset += 1
         data = {
             "id": self.last_dataset,
             "type": type_,
+            "mode": constants.DATASET_MODES[mode],
             "description": "",
             "size": 0
         }
 
-        with open(join(constants.EXP_DIR, "datasets/dataset_%s" % str(self.last_dataset), "config.json"), 'w') as json_file:
+        with open(join(constants.EXP_DIR, "datasets/dataset_%s/%s_set" % (str(self.last_dataset), constants.DATASET_MODES[mode]), "config.json"), 'w') as json_file:
             dump(data, json_file)
