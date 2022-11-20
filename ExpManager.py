@@ -100,20 +100,34 @@ class ExpManager:
                  stderr=output)
 
 
-    def prompt(self):
+    def serve_tensorboard(self):
+        exp_id = self.choose_experiment()
+        with open("/home/mamoros/tmp/output.log", "a") as output:
+                call(constants.DOCKER_RUN.format(params="-it --rm -p 8050:8050",
+                                            vol_code="/home/mamoros/exp/exp_%s/tensorboard/:/tensorboard" % str(exp_id),
+                                            vol_data="/home/mamoros/exp/exp_%s/tensorboard/:/tensorboard" % str(exp_id),
+                                            name="tensorboard",
+                                            img="tensorflow/tensorflow",
+                                            cmd="tensorboard --logdir /tensorboard --port 8050 --bind_all"),
+                    shell=True,
+                    stdout=output,
+                    stderr=output)
 
+
+    def prompt(self):
         self.print_datasets_and_experiments()
 
         run = True
         while run:
             ok = False
-            options = [str(x) for x in range(5)]
+            options = [str(x) for x in range(6)]
             while not ok:
                 option = input( "0. Close\n" \
                                 "1. Create experiment\n" \
                                 "2. Create dataset\n" \
                                 "3. Run experiment\n" \
-                                "4. Show datasets and experiments\n" )
+                                "4. Show datasets and experiments\n" \
+                                "5. Monitor experiment\n" )
                 if option in options:
                     ok = True
             if option == '0':
@@ -126,6 +140,8 @@ class ExpManager:
                 self.run_exp()
             elif option == '4':
                 self.print_datasets_and_experiments()
+            elif option == '5':
+                self.serve_tensorboard()
             else:
                 raise Exception
 
