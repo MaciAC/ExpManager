@@ -25,21 +25,24 @@ class DatasetManager:
         self.last_dataset = max_id
 
 
-    def create_dataset_synthetic(self, mode):
-        folder = "/home/mamoros/exp/datasets/dataset_%s/%s_set" % (str(int(self.last_dataset) + 1),
-                                                                   constants.DATASET_MODES[mode])
-        with open("/home/mamoros/tmp/output.log", "a") as output:
-            call(constants.DOCKER_RUN.format(params="-it --rm",
-                                        vol_code="/home/mamoros/build/DNS-Challenge/:/DNS-Challenge",
-                                        vol_data="/home/mamoros/exp/datasets/real:/datasets " \
-                                                 "-v %s:/out" % folder,
-                                        name="DNS-Challenge",
-                                        img="mamoros:DNS_challenge",
-                                        cmd="python3 /DNS-Challenge/noisyspeech_synthesizer_singleprocess.py"),
-                 shell=True,
-                 stdout=output,
-                 stderr=output)
-        return folder
+    def create_dataset_synthetic(self, modes):
+        folders = []
+        for mode in modes:
+            folder = "/home/mamoros/exp/datasets/dataset_%s/%s_set" % (str(int(self.last_dataset) + 1),
+                                                                    constants.DATASET_MODES[mode])
+            with open("/home/mamoros/tmp/output.log", "a") as output:
+                call(constants.DOCKER_RUN.format(params="-it --rm",
+                                            vol_code="/home/mamoros/build/DNS-Challenge/:/DNS-Challenge",
+                                            vol_data="/home/mamoros/exp/datasets/real:/datasets " \
+                                                    "-v %s:/out" % folder,
+                                            name="DNS-Challenge",
+                                            img="mamoros:DNS_challenge",
+                                            cmd="python3 /DNS-Challenge/noisyspeech_synthesizer_singleprocess.py"),
+                    shell=True,
+                    stdout=output,
+                    stderr=output)
+            folders.append(folder)
+        return folders
 
     def save_snippet(self, snippets, min_length, sr_transcode=16000):
         data_array = []
@@ -158,30 +161,33 @@ class DatasetManager:
             if option in options:
                 ok = True
         ok=False
-        modes = [str(x) for x in range(1,4)]
+        modes = [str(x) for x in range(1,3)]
         while not ok:
-            mode = input( "1. Train\n" \
-                            "2. Test\n" \
-                            "3. Valid\n")
+            mode = input( "1. Train&Valid\n" \
+                            "2. Test\n")
             if mode in modes:
                 ok = True
+        if mode == '1':
+            modes = ['1', '3']
+        else:
+            modes = [mode]
+
         if option == '1':
-            folder = self.create_dataset_synthetic(mode)
+            folders = self.create_dataset_synthetic(modes)
             type_ = "synth"
         if option == '2':
-            folder = self.create_dataset_real(mode)
+            folders = self.create_dataset_real(modes)
             type_ = "real"
-
-        self.rename_files(folder)
-
+        for folder in folders:
+            self.rename_files(folder)
         self.last_dataset += 1
         data = {
             "id": self.last_dataset,
             "type": type_,
-            "mode": constants.DATASET_MODES[mode],
+            "mode": "_".join([constants.DATASET_MODES[x] for x in modes]),
             "description": "",
             "size": 0
         }
 
-        with open(join(constants.EXP_DIR, "datasets/dataset_%s/%s_set" % (str(self.last_dataset), constants.DATASET_MODES[mode]), "config.json"), 'w') as json_file:
+        with open(join(constants.EXP_DIR, "datasets/dataset_%s/" % str(self.last_dataset), "config.json"), 'w') as json_file:
             dump(data, json_file)
