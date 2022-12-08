@@ -1,4 +1,4 @@
-from os import listdir, popen, rename
+from os import listdir, popen, rename, mkdir
 from json import load, dump
 from os.path import join
 import constants
@@ -28,8 +28,9 @@ class DatasetManager:
     def create_dataset_synthetic(self, modes):
         folders = []
         for mode in modes:
+            mode_str = constants.DATASET_MODES[mode]
             folder = "/home/mamoros/exp/datasets/dataset_%s/%s_set" % (str(int(self.last_dataset) + 1),
-                                                                    constants.DATASET_MODES[mode])
+                                                                    mode_str)
             with open("/home/mamoros/tmp/output.log", "a") as output:
                 call(constants.DOCKER_RUN.format(params="-it --rm",
                                             vol_code="/home/mamoros/build/DNS-Challenge/:/DNS-Challenge",
@@ -37,7 +38,9 @@ class DatasetManager:
                                                     "-v %s:/out" % folder,
                                             name="DNS-Challenge",
                                             img="mamoros:DNS_challenge",
-                                            cmd="python3 /DNS-Challenge/noisyspeech_synthesizer_singleprocess.py"),
+                                            cmd="python3 "\
+                                                "/DNS-Challenge/noisyspeech_synthesizer_singleprocess.py " \
+                                                "--cfg noisyspeech_synthesizer_%s.cfg" % mode_str),
                     shell=True,
                     stdout=output,
                     stderr=output)
@@ -47,7 +50,7 @@ class DatasetManager:
     def save_snippet(self, snippets, min_length, sr_transcode=16000):
         data_array = []
         for j, folder, filename, debug, begin, dur in snippets:
-            out_name = constants.SNIPPETS_DIR + folder + '/fileid_' + str(j) + '.wav'
+            out_name = constants.SNIPPETS_DIR % str(self.last_dataset + 1) + folder + '/fileid_' + str(j) + '.wav'
             waiting = True
             f = 'query'
             if folder == 'clean':
@@ -104,8 +107,8 @@ class DatasetManager:
             limit = max_samples
         for i, row in df.head(limit).iterrows():
             # copy from nfs if not already copied
-            for k in self.KEYS:
-                path = join(self.NFS_BASE_PATH, row[k])
+            for k in constants.KEYS:
+                path = join(constants.NFS_BASE_PATH, row[k])
                 filename = path.split('/')[-1]
                 if copy:
                     if filename in already_copied:
@@ -139,7 +142,16 @@ class DatasetManager:
 
 
     def create_dataset_real(self, mode):
-        self.cp_nfsdataset_audio2snippet('/home/mamoros/dataset/dataset.csv', copy=True, max_samples=0, debug=False, out_sr=8000)
+        dataset_path = join(constants.EXP_DIR, "datasets/dataset_%s/" % str(self.last_dataset + 1))
+        mkdir(dataset_path)
+        mkdir(join(dataset_path, 'clean'))
+        mkdir(join(dataset_path, 'noisy'))
+        self.cp_nfsdataset_audio2snippet('/home/mamoros/exp/datasets/real/better_alignment.csv',
+                                         min_snippet_len = 5,
+                                        copy=True,
+                                        max_samples=0,
+                                        debug=False,
+                                        out_sr=8000)
 
 
     def rename_files(self, folder):
@@ -175,11 +187,12 @@ class DatasetManager:
         if option == '1':
             folders = self.create_dataset_synthetic(modes)
             type_ = "synth"
+            for folder in folders:
+                self.rename_files(folder)
         if option == '2':
-            folders = self.create_dataset_real(modes)
+            self.create_dataset_real(modes)
             type_ = "real"
-        for folder in folders:
-            self.rename_files(folder)
+
         self.last_dataset += 1
         data = {
             "id": self.last_dataset,
