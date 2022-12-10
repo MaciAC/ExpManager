@@ -4,6 +4,7 @@ from os.path import join
 import constants
 from DatasetManager import DatasetManager
 from subprocess import call
+from pandas import concat, read_csv
 
 class ExpManager:
 
@@ -128,7 +129,7 @@ class ExpManager:
         vol_data = "/home/mamoros/exp/datasets/dataset_%s:/dataset " \
                    "-v /home/mamoros/exp/exp_%s:/exp/" % (dataset_id, exp_id)
         with open("/home/mamoros/tmp/output.log", "a") as output:
-            call(constants.DOCKER_RUN.format(params="-it --rm --gpus all",
+            call(constants.DOCKER_RUN.format(params="-it --rm --gpus all --shm-size=24g",
                                         vol_code="/home/mamoros/build/CleanUNet:/model",
                                         vol_data=vol_data,
                                         name="CleanUNet_denoise",
@@ -139,53 +140,79 @@ class ExpManager:
                  stderr=output)
 
 
+    def match(self, folder_fps, index, folder_out):
+        try:
+            mkdir(folder_out)
+        except:
+            pass
+        input('WARNING first run previous Commands!, press intro once done')
+        cmds_file = '/home/mamoros/tmp/cmds_match.sh'
+        fps = listdir(folder_fps)
+        with open(cmds_file, 'w') as f:
+            for fp in fps:
+                f.write("fpmatcher identify  -q {fp} -i {index} -c fp1 > {match}\n".format(
+                    fp=join(folder_fps, fp),
+                    index=index,
+                    match=join(folder_out, fp.replace('fp1','csv'))
+                ))
+        print("cat {} | xargs -I % -n 1 -P 8 sh -c 'echo %; %'".format(cmds_file))
+
+
+
+    def transcode(self, folder_in, folder_out, sr, codec):
+        #"cat cmds.sh | xargs -I {} -n 1 -P 24 sh -c 'echo \"{}\"; {}'"
+        try:
+            mkdir(folder_out)
+        except:
+            pass
+        cmds_file = '/home/mamoros/tmp/cmds_transcode.sh'
+        in_files = listdir(folder_in)
+        with open(cmds_file, 'w') as f:
+            for file in in_files:
+                f.write("ffmpeg -i '{}' -ac 1 -ar {} -acodec {} '{}' -n\n".format(
+                        join(folder_in, file),
+                        sr,
+                        codec,
+                        join(folder_out, file)
+                        ))
+        print("cat {} | xargs -I % -n 1 -P 8 sh -c 'echo %; %'".format(cmds_file))
+
+
+
+    def join_matches(self, folder):
+        input('WARNING first run previous Commands!, press intro once done')
+        matches = [join(folder, x) for x in listdir(folder)]
+        df = concat(map(read_csv, matches), ignore_index=True)
+        df.dropna(inplace=True)
+        df.to_csv(join(folder, 'matches.csv'))
+
+
     def evaluation(self):
         """
-        multi process xargs
-
-        cat cmds.sh | xargs -I {} -n 1 -P 24 sh -c 'echo "{}"; {}'
-
-
-
-        all audios transcoded
-
-        ffmpeg -i /srv/nfs/bmat_core/fingerprinting_qa/collections/siae_venues_microphone_vol1/queries/rec207397491__1440_1622.wav 
-                -ac 1 -ar 8000 -acodec pcm_s16le test.wav
-
-
-        extraxt fp
-
-        fpextractor test.wav test.fp1 fp1
-
-
-        make list of fp filenames
-
-        cat refs.lst
-        test2.fp1
-        test3.fp1
-        test.fp1
-
-
-        create index
-
-        emolina@machin:~$ fpmatcher create_index refs.lst index
-        info - pid:0x00000a6e - 2022-12-07 09:01:06.369480:  populated with 3 valid fingerprints in 3.41208ms (1.13736ms/fingerprint)
-
-
-        match
-
-        fpmatcher identify  -q  test.fp1 -i index -c fp1 > matches.csv
-        info - pid:0x00000a73 - 2022-12-07 09:01:39.935810:  'fpmatcher@index' identified 181360.0ms of 181360.0ms from fingerprint 'test.fp1' in 11.6ms (15608.6xRT)
-        emolina@machin:~$ cat matches.csv
-        "Query","Query begin time","Query end time","Reference","Reference begin time","Reference end time","Confidence","Max confidence"
-        "","","","","","","",""
-        "test.fp1","0.048","181.84","test2.fp1","0.048","181.84","203.167","214"
 
         evaluate -> https://github.com/guillemcortes/baf-dataset/blob/main/compute_statistics.py
         """
         exp_id = self.choose_experiment()
+        exp_dir = '/home/mamoros/exp/exp_%d' % exp_id
+        with open(join(exp_dir, "config.json")) as json_file:
+            data = load(json_file)
+        dataset_id = data['dataset']
+        self.transcode(
+            join(exp_dir, 'denoised/0k/'),
+            join(exp_dir, 'transcoded'),
+            8000,
+            'pcm_s16le')
+        self.datasetManager.extract_figerprint(
+            join(exp_dir, 'transcoded'),
+            join(exp_dir,'denoised_fp1'),
+            'fp1')
+        self.match(
+            join(exp_dir,'denoised_fp1'),
+            join('/home/mamoros/exp/datasets/dataset_%d/testing_set/clean_fp1/index' % dataset_id),
+            join(exp_dir, 'matches'))
+        self.join_matches(join(exp_dir, 'matches'))
 
-        
+
 
 
     def prompt(self):
@@ -220,7 +247,7 @@ class ExpManager:
                 self.serve_tensorboard()
             elif option == '6':
                 self.inference()
-            elif option == '6':
+            elif option == '7':
                 self.evaluation()
             else:
                 raise Exception

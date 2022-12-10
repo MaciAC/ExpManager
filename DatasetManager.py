@@ -1,13 +1,13 @@
 from os import listdir, popen, rename, mkdir
 from json import load, dump
-from os.path import join
+from os.path import join, exists
 import constants
 from subprocess import call
-from pandas import read_csv
+from pandas import read_csv, concat
 from scipy.io.wavfile import read, write
 import numpy as np
 from time import sleep
-import stat
+import sys
 
 
 class DatasetManager:
@@ -140,18 +140,139 @@ class DatasetManager:
             if self.save_snippet(snippets, min_snippet_len, sr_transcode=out_sr):
                 j += 1
 
+    def convert_audio_multiprocess(self, refs_in, queries_in, refs_out, queries_out, sr, codec):
+        #"cat cmds.sh | xargs -I {} -n 1 -P 24 sh -c 'echo \"{}\"; {}'"
+        cmds_file = '/home/mamoros/tmp/cmds_convert.sh'
+        with open(cmds_file, 'w') as f:
+            for i, file in enumerate(refs_in):
+                f.write("ffmpeg -i '{}' -ac 1 -ar {} -acodec {} '{}' -n\n".format(
+                        file,
+                        sr,
+                        codec,
+                        refs_out % i,
+                        ))
+            for i, file in enumerate(queries_in):
+                f.write("ffmpeg -i '{}' -ac 1 -ar {} -acodec {} '{}' -n\n".format(
+                        file,
+                        sr,
+                        codec,
+                        queries_out % i,
+                        ))
+        print("cat {} | xargs -I % -n 1 -P 8 sh -c 'echo %; %'".format(cmds_file))
+
+    def extract_figerprint(self, folder_in, folder_out, fp_type):
+        input('WARNING first run previous Commands!, press intro once done')
+        try:
+            mkdir(folder_out)
+        except:
+            pass
+        audio_files = listdir(folder_in)
+        cmds_file = '/home/mamoros/tmp/cmds_extract_fp.sh'
+        with open(cmds_file, 'w') as f:
+            for file in audio_files:
+                f.write("fpextractor {in_file} {out_file} {fp}\n".format(
+                        in_file=join(folder_in, file),
+                        out_file=join(folder_out,file.replace('wav', fp_type)),
+                        fp=fp_type))
+        print("cat {} | xargs -I % -n 1 -P 8 sh -c 'echo %; %'".format(cmds_file))
+
+
+    def create_index(self, folder):
+        input('WARNING first run previous Commands!, press intro once done')
+        fp_files = ['{}/{}\n'.format(folder,x) for x in listdir(folder)]
+        cmd_file = '/home/mamoros/tmp/cmds_create_index.sh'
+        lst_file = join(folder, 'fp.lst')
+        with open(lst_file, 'w') as f:
+            f.writelines(fp_files)
+        with open(cmd_file, 'w') as f:
+            f.write("fpmatcher create_index {lst} {out_name}\n".format(
+                lst=lst_file,
+                out_name=join(folder, 'index')
+            ))
+        print("cat {} | xargs -I % -n 1 -P 8 sh -c 'echo %; %'".format(cmd_file))
+
+
+    def create_test_set(self):
+        mkdir(constants.SNIPPETS_DIR % str(self.last_dataset + 1))
+        out_dir = join(constants.SNIPPETS_DIR % str(self.last_dataset + 1), 'testing_set')
+        mkdir(out_dir)
+        mkdir(join(out_dir, 'clean'))
+        mkdir(join(out_dir, 'noisy'))
+        data_dir = '/srv/nfs/bmat_core/fingerprinting_qa/collections/siae_venues_microphone_vol1'
+        dataset_file = join(data_dir, 'groundtruth.csv')
+        df = read_csv(dataset_file)
+        df.iloc[:, 0] = join(data_dir, 'queries/') + df.iloc[:, 0].astype(str)
+        df.iloc[:, 1] = join(data_dir, 'references/') + df.iloc[:, 1].astype(str)
+        queries_in = []
+        queries_out = []
+        exists_files = [[],[]]
+        prev_ref = ''
+        df = df.sort_values(by=df.columns[1], ignore_index=True)
+        ref_ids = []
+        curr_id = -1
+        prev_exists = False
+        for i, row in df.iterrows():
+            iterate = [0,1]
+            if prev_ref.split('/')[-1] == row[1].split('/')[-1]:
+                iterate = [0]
+                exists_files[1].append(exists_files[1][-1])
+            elif prev_exists:
+                curr_id += 1
+            prev_exists = True
+            ref_ids.append(curr_id)
+            for j in iterate:
+                if not exists(row[j]):
+                    if not exists(row[j].replace('vol1', 'vol2')):
+                        exists_files[j].append('NO')
+                        prev_exists = False
+                        #curr_id -= 1
+                    else:
+                        exists_files[j].append('2')
+                        df.iloc[i,j] = row[j].replace('vol1', 'vol2')
+                else:
+                    exists_files[j].append('1')
+            prev_ref = df.iloc[i,1]
+
+        df['query found'] = exists_files[0]
+        df['reference found'] = exists_files[1]
+        df['reference ids'] = ref_ids
+        df.drop(df[df['query found'] == 'NO'].index, inplace = True)
+        df.drop(df[df['reference found'] == 'NO'].index, inplace = True)
+        df.reset_index(inplace=True, drop = True)
+        df.to_csv(join(out_dir, 'ground_truth_post.csv'))
+        queries_in = df.iloc[:, 0].astype(str)
+        queries_out = join(out_dir, 'noisy/fileid_%s.wav')
+
+        df['ref_name'] = df.iloc[:, 1].str.split('/').str[-1]
+        df = df.drop_duplicates('ref_name')
+        refs_in = df.iloc[:, 1].astype(str)
+        refs_out = join(out_dir, 'clean/fileid_%s.wav')
+
+        self.convert_audio_multiprocess(refs_in, queries_in, refs_out, queries_out,
+                                        8000,
+                                        'pcm_s16le')
+
+        self.extract_figerprint(join(out_dir, 'clean'), join(out_dir, 'clean_fp1'), 'fp1')
+
+        self.create_index(join(out_dir, 'clean_fp1'))
+
+
 
     def create_dataset_real(self, mode):
-        dataset_path = join(constants.EXP_DIR, "datasets/dataset_%s/" % str(self.last_dataset + 1))
-        mkdir(dataset_path)
-        mkdir(join(dataset_path, 'clean'))
-        mkdir(join(dataset_path, 'noisy'))
-        self.cp_nfsdataset_audio2snippet('/home/mamoros/exp/datasets/real/better_alignment.csv',
-                                         min_snippet_len = 5,
-                                        copy=True,
-                                        max_samples=0,
-                                        debug=False,
-                                        out_sr=8000)
+        if mode == ['1', '3']:
+            dataset_path = join(constants.EXP_DIR, "datasets/dataset_%s/" % str(self.last_dataset + 1))
+            mkdir(dataset_path)
+            mkdir(join(dataset_path, 'clean'))
+            mkdir(join(dataset_path, 'noisy'))
+            self.cp_nfsdataset_audio2snippet('/home/mamoros/exp/datasets/real/better_alignment.csv',
+                                            min_snippet_len = 5,
+                                            copy=True,
+                                            max_samples=0,
+                                            debug=False,
+                                            out_sr=8000)
+
+        else:
+            self.create_test_set()
 
 
     def rename_files(self, folder):
@@ -162,7 +283,6 @@ class DatasetManager:
             for file in files:
                 new_file = join(base_path, '_'.join(file.rsplit('_')[-2:]))
                 rename(join(base_path, file), new_file)
-
 
     def create_dataset(self):
         ok = False
