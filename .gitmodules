@@ -4,6 +4,3 @@
 [submodule "DNS-Challenge"]
 	path = DNS-Challenge
 	url = https://github.com/MaciAC/DNS-Challenge
-[submodule "baf-dataset"]
-	path = baf-dataset
-	url = git@github.com:MaciAC/baf-dataset.git
