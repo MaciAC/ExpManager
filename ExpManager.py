@@ -161,14 +161,6 @@ class ExpManager:
 
 
 
-    def join_matches(self, folder):
-        input('WARNING first run previous Commands!, press intro once done')
-        matches = [join(folder, x) for x in listdir(folder)]
-        df = concat(map(read_csv, matches), ignore_index=True)
-        df.dropna(inplace=True)
-        df.to_csv(join(folder, 'matches.csv'))
-
-
     def evaluation(self):
         """
 
@@ -192,12 +184,6 @@ class ExpManager:
             join(exp_dir,'denoised_fp1'),
             join('/home/mamoros/exp/datasets/dataset_%d/testing_set/clean_fp1/index' % dataset_id),
             join(exp_dir, 'matches'))
-        self.join_matches(join(exp_dir, 'matches'))
-        self.datasetManager.match(
-            join(exp_dir,'denoised_fp1'),
-            join('/home/mamoros/exp/datasets/dataset_%d/testing_set/clean_fp1/index' % dataset_id),
-            join(exp_dir, 'matches'))
-        self.join_matches(join(exp_dir, 'matches'))
 
 
 

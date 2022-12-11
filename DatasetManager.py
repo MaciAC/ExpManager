@@ -140,11 +140,9 @@ class DatasetManager:
     def run_commands_multiprocess(self, cmds):
         p2 = subprocess.Popen(["cat {} | xargs -I % -n 1 -P 20 sh -c 'echo %; %'".format(cmds)], shell=True)
         out, err = p2.communicate()
-        print(out)
-        #p2.wait()
+        print(cmds)
         print("Completed!")
-        print('output: ', p2.stdout)
-        print('error: ', p2.stderr)
+
 
 
     def convert_audio_multiprocess(self, refs_in, queries_in, refs_out, queries_out, sr, codec):
@@ -202,6 +200,11 @@ class DatasetManager:
                     match=join(folder_out, fp.replace('fp1','csv'))
                 ))
         self.run_commands_multiprocess(cmds_file)
+        # join all csv created in one and drop empty rows
+        matches = [join(folder_out, x) for x in listdir(folder_out)]
+        df = concat(map(read_csv, matches), ignore_index=True)
+        df.dropna(inplace=True)
+        df.to_csv(join(folder_out, 'matches.csv'))
 
 
 
@@ -289,6 +292,8 @@ class DatasetManager:
             join(out_dir, 'noisy_fp1'),
             '/home/mamoros/exp/datasets/dataset_%s/testing_set/clean_fp1/index' % str(self.last_dataset + 1),
             join(out_dir, 'matches'))
+
+
 
     def create_dataset_real(self, mode):
         if mode == ['1', '3']:
