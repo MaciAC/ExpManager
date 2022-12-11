@@ -204,7 +204,11 @@ class DatasetManager:
         matches = [join(folder_out, x) for x in listdir(folder_out)]
         df = concat(map(read_csv, matches), ignore_index=True)
         df.dropna(inplace=True)
-        df.to_csv(join(folder_out, 'matches.csv'))
+        df['Query'] = df.apply(lambda row: row.Query.split('/')[-1], axis=1)
+        df['Reference'] = df.apply(lambda row: row.Query.split('/')[-1], axis=1)
+        # adapt column names to baf-dataset/compute_statistics.py
+        df.columns = ['query', 'query_start', 'query_end', 'reference', 'ref_start', 'ref_end', 'score', 'max_score']
+        df.to_csv(join(folder_out, 'matches.csv'), index = False)
 
 
 
@@ -241,7 +245,7 @@ class DatasetManager:
         df = df.sort_values(by=df.columns[1], ignore_index=True)
         ref_ids = []
         curr_id = -1
-        prev_exists = False
+        prev_exists = True
         for i, row in df.iterrows():
             iterate = [0,1]
             if prev_ref.split('/')[-1] == row[1].split('/')[-1]:
@@ -256,7 +260,6 @@ class DatasetManager:
                     if not exists(row[j].replace('vol1', 'vol2')):
                         exists_files[j].append('NO')
                         prev_exists = False
-                        #curr_id -= 1
                     else:
                         exists_files[j].append('2')
                         df.iloc[i,j] = row[j].replace('vol1', 'vol2')
@@ -271,6 +274,12 @@ class DatasetManager:
         df.drop(df[df['reference found'] == 'NO'].index, inplace = True)
         df.reset_index(inplace=True, drop = True)
         df.to_csv(join(out_dir, 'ground_truth_post.csv'))
+        df['Index'] = df.index
+        df['query_filename'] = df['Index'].apply(lambda row: "fileid_%s.fp1" % row)
+        df['reference_filename'] = df['reference ids'].apply(lambda row: "fileid_%s.fp1" % row)
+        df_annotations = df[['query_filename', 'reference_filename']]
+        df_annotations.to_csv(join(out_dir, 'annotations.csv'), index=False)
+
         queries_in = df.iloc[:, 0].astype(str)
         queries_out = join(out_dir, 'noisy/fileid_%s.wav')
 

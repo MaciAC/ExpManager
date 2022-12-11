@@ -161,6 +161,22 @@ class ExpManager:
 
 
 
+    def compute_statistics(self, folder):
+        """
+    docker run --rm -it -v /home/mamoros/build/baf-dataset:/baf-dataset -v /home/mamoros/exp/datasets/dataset_4/testing_set/:/testing_set
+        mamoros:baf-dataset python3 baf-dataset/compute_statistics.py testing_set/matches/matches.csv testing_set/annotations.csv
+        """
+        with open("/home/mamoros/tmp/output.log", "a") as output:
+            call(constants.DOCKER_RUN.format(params="-it --rm ",
+                                        vol_code="/home/mamoros/build/baf-dataset:/baf-dataset",
+                                        vol_data='/home/mamoros/exp/datasets/dataset_4/testing_set/:/testing_set',
+                                        name="baf_compute_statistics",
+                                        img="mamoros:baf",
+                                        cmd="python3 baf-dataset/compute_statistics.py testing_set/matches/matches.csv testing_set/annotations.csv"),
+                 shell=True,
+                 stdout=output,
+                 stderr=output)
+
     def evaluation(self):
         """
 
@@ -184,6 +200,7 @@ class ExpManager:
             join(exp_dir,'denoised_fp1'),
             join('/home/mamoros/exp/datasets/dataset_%d/testing_set/clean_fp1/index' % dataset_id),
             join(exp_dir, 'matches'))
+        self.compute_statistics(join(exp_dir, 'matches'))
 
 
 
