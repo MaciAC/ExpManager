@@ -7,8 +7,8 @@ from pandas import read_csv, concat
 from scipy.io.wavfile import read, write
 import numpy as np
 from time import sleep
-import sys
-
+import subprocess
+import io
 
 class DatasetManager:
 
@@ -69,17 +69,13 @@ class DatasetManager:
                     sr, data = read(new_file)
                     waiting = False
                 except FileNotFoundError:
-                    print(filename)
                     sleep(1)
             begin = int(begin * sr)
             dur = int(dur * sr)
             if len(data[begin:begin+dur]) < min_length*sr:
                 return False
             # normalize
-            print(data)
-            print(data.max())
             data = data/np.abs(data).max()
-            print(data.max())
             data_array.append((data[begin:begin+dur], out_name))
         if len(data_array) != 2:
             return False
@@ -114,7 +110,6 @@ class DatasetManager:
                     if filename in already_copied:
                         print('Already copied %s' % filename)
                     else:
-                        print('Copy')
                         popen("cp '{}' '{}'".format(path, join(constants.AUDIOFILES_DIR ,k, filename)))
                         already_copied.append(filename)
                 begin_time = row[k + '_begin_time']
@@ -140,6 +135,18 @@ class DatasetManager:
             if self.save_snippet(snippets, min_snippet_len, sr_transcode=out_sr):
                 j += 1
 
+
+
+    def run_commands_multiprocess(self, cmds):
+        p2 = subprocess.Popen(["cat {} | xargs -I % -n 1 -P 20 sh -c 'echo %; %'".format(cmds)], shell=True)
+        out, err = p2.communicate()
+        print(out)
+        #p2.wait()
+        print("Completed!")
+        print('output: ', p2.stdout)
+        print('error: ', p2.stderr)
+
+
     def convert_audio_multiprocess(self, refs_in, queries_in, refs_out, queries_out, sr, codec):
         #"cat cmds.sh | xargs -I {} -n 1 -P 24 sh -c 'echo \"{}\"; {}'"
         cmds_file = '/home/mamoros/tmp/cmds_convert.sh'
@@ -158,10 +165,12 @@ class DatasetManager:
                         codec,
                         queries_out % i,
                         ))
-        print("cat {} | xargs -I % -n 1 -P 8 sh -c 'echo %; %'".format(cmds_file))
+
+        self.run_commands_multiprocess(cmds_file)
+
+
 
     def extract_figerprint(self, folder_in, folder_out, fp_type):
-        input('WARNING first run previous Commands!, press intro once done')
         try:
             mkdir(folder_out)
         except:
@@ -174,11 +183,29 @@ class DatasetManager:
                         in_file=join(folder_in, file),
                         out_file=join(folder_out,file.replace('wav', fp_type)),
                         fp=fp_type))
-        print("cat {} | xargs -I % -n 1 -P 8 sh -c 'echo %; %'".format(cmds_file))
+        self.run_commands_multiprocess(cmds_file)
+
+
+
+    def match(self, folder_fps, index, folder_out):
+        try:
+            mkdir(folder_out)
+        except:
+            pass
+        cmds_file = '/home/mamoros/tmp/cmds_match.sh'
+        fps = listdir(folder_fps)
+        with open(cmds_file, 'w') as f:
+            for fp in fps:
+                f.write("fpmatcher identify  -q {fp} -i {index} -c fp1 > {match}\n".format(
+                    fp=join(folder_fps, fp),
+                    index=index,
+                    match=join(folder_out, fp.replace('fp1','csv'))
+                ))
+        self.run_commands_multiprocess(cmds_file)
+
 
 
     def create_index(self, folder):
-        input('WARNING first run previous Commands!, press intro once done')
         fp_files = ['{}/{}\n'.format(folder,x) for x in listdir(folder)]
         cmd_file = '/home/mamoros/tmp/cmds_create_index.sh'
         lst_file = join(folder, 'fp.lst')
@@ -189,7 +216,8 @@ class DatasetManager:
                 lst=lst_file,
                 out_name=join(folder, 'index')
             ))
-        print("cat {} | xargs -I % -n 1 -P 8 sh -c 'echo %; %'".format(cmd_file))
+        self.run_commands_multiprocess(cmd_file)
+
 
 
     def create_test_set(self):
@@ -256,7 +284,11 @@ class DatasetManager:
 
         self.create_index(join(out_dir, 'clean_fp1'))
 
-
+        self.extract_figerprint(join(out_dir, 'noisy'), join(out_dir, 'noisy_fp1'), 'fp1')
+        self.match(
+            join(out_dir, 'noisy_fp1'),
+            '/home/mamoros/exp/datasets/dataset_%s/testing_set/clean_fp1/index' % str(self.last_dataset + 1),
+            join(out_dir, 'matches'))
 
     def create_dataset_real(self, mode):
         if mode == ['1', '3']:

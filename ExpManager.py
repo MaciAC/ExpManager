@@ -140,24 +140,6 @@ class ExpManager:
                  stderr=output)
 
 
-    def match(self, folder_fps, index, folder_out):
-        try:
-            mkdir(folder_out)
-        except:
-            pass
-        input('WARNING first run previous Commands!, press intro once done')
-        cmds_file = '/home/mamoros/tmp/cmds_match.sh'
-        fps = listdir(folder_fps)
-        with open(cmds_file, 'w') as f:
-            for fp in fps:
-                f.write("fpmatcher identify  -q {fp} -i {index} -c fp1 > {match}\n".format(
-                    fp=join(folder_fps, fp),
-                    index=index,
-                    match=join(folder_out, fp.replace('fp1','csv'))
-                ))
-        print("cat {} | xargs -I % -n 1 -P 8 sh -c 'echo %; %'".format(cmds_file))
-
-
 
     def transcode(self, folder_in, folder_out, sr, codec):
         #"cat cmds.sh | xargs -I {} -n 1 -P 24 sh -c 'echo \"{}\"; {}'"
@@ -206,7 +188,12 @@ class ExpManager:
             join(exp_dir, 'transcoded'),
             join(exp_dir,'denoised_fp1'),
             'fp1')
-        self.match(
+        self.datasetManager.match(
+            join(exp_dir,'denoised_fp1'),
+            join('/home/mamoros/exp/datasets/dataset_%d/testing_set/clean_fp1/index' % dataset_id),
+            join(exp_dir, 'matches'))
+        self.join_matches(join(exp_dir, 'matches'))
+        self.datasetManager.match(
             join(exp_dir,'denoised_fp1'),
             join('/home/mamoros/exp/datasets/dataset_%d/testing_set/clean_fp1/index' % dataset_id),
             join(exp_dir, 'matches'))
