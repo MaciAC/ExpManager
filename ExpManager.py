@@ -94,8 +94,8 @@ class ExpManager:
         exp_id = self.choose_experiment()
         exp = self.experiments[exp_id]
         dataset_id = exp["dataset"]
-        vol_data = "/home/mamoros/exp/datasets/dataset_%s:/dataset " \
-                   "-v /home/mamoros/exp/exp_%s:/exp/" % (dataset_id, exp_id)
+        vol_data = "/data/mamoros/exp/datasets/dataset_%s:/dataset " \
+                   "-v /data/mamoros/exp/exp_%s:/exp/" % (dataset_id, exp_id)
         with open("/home/mamoros/tmp/output.log", "a") as output:
             call(constants.DOCKER_RUN.format(params="-it --rm --gpus all",
                                         vol_code="/home/mamoros/build/CleanUNet:/model",
@@ -112,8 +112,8 @@ class ExpManager:
         exp_id = self.choose_experiment()
         with open("/home/mamoros/tmp/output.log", "a") as output:
                 call(constants.DOCKER_RUN.format(params="-it --rm -p 8050:8050",
-                                            vol_code="/home/mamoros/exp/exp_%s/tensorboard/:/tensorboard" % str(exp_id),
-                                            vol_data="/home/mamoros/exp/exp_%s/tensorboard/:/tensorboard" % str(exp_id),
+                                            vol_code="/data/mamoros/exp/exp_%s/tensorboard/:/tensorboard" % str(exp_id),
+                                            vol_data="/data/mamoros/exp/exp_%s/tensorboard/:/tensorboard" % str(exp_id),
                                             name="tensorboard",
                                             img="tensorflow/tensorflow",
                                             cmd="tensorboard --logdir /tensorboard --port 8050 --bind_all"),
@@ -126,10 +126,10 @@ class ExpManager:
         exp_id = self.choose_experiment()
         exp = self.experiments[exp_id]
         dataset_id = exp["dataset"]
-        vol_data = "/home/mamoros/exp/datasets/dataset_%s:/dataset " \
-                   "-v /home/mamoros/exp/exp_%s:/exp/" % (dataset_id, exp_id)
+        vol_data = "/data/mamoros/exp/datasets/dataset_%s:/dataset " \
+                   "-v /data/mamoros/exp/exp_%s:/exp/" % (dataset_id, exp_id)
         with open("/home/mamoros/tmp/output.log", "a") as output:
-            call(constants.DOCKER_RUN.format(params="-it --rm --gpus all --shm-size=24g",
+            call(constants.DOCKER_RUN.format(params='-it --rm --gpus all --shm-size=24g -e PYTORCH_CUDA_ALLOC_CONF="max_split_size_mb: 8192"',
                                         vol_code="/home/mamoros/build/CleanUNet:/model",
                                         vol_data=vol_data,
                                         name="CleanUNet_denoise",
@@ -157,7 +157,7 @@ class ExpManager:
                         codec,
                         join(folder_out, file)
                         ))
-        print("cat {} | xargs -I % -n 1 -P 8 sh -c 'echo %; %'".format(cmds_file))
+        self.datasetManager.run_commands_multiprocess("cat {} | xargs -I % -n 1 -P 8 sh -c 'echo %; %'".format(cmds_file))
 
 
 
@@ -169,9 +169,9 @@ class ExpManager:
         with open("/home/mamoros/tmp/output.log", "a") as output:
             call(constants.DOCKER_RUN.format(params="-it --rm ",
                                         vol_code="/home/mamoros/build/baf-dataset:/baf-dataset",
-                                        vol_data='/home/mamoros/exp/datasets/dataset_4/testing_set/:/testing_set',
+                                        vol_data='/data/mamoros/exp/datasets/dataset_4/testing_set/:/testing_set',
                                         name="baf_compute_statistics",
-                                        img="mamoros:baf",
+                                        img="mamoros:baf-dataset",
                                         cmd="python3 baf-dataset/compute_statistics.py testing_set/matches/matches.csv testing_set/annotations.csv"),
                  shell=True,
                  stdout=output,
@@ -183,10 +183,11 @@ class ExpManager:
         evaluate -> https://github.com/guillemcortes/baf-dataset/blob/main/compute_statistics.py
         """
         exp_id = self.choose_experiment()
-        exp_dir = '/home/mamoros/exp/exp_%d' % exp_id
+        exp_dir = '/data/mamoros/exp/exp_%d' % exp_id
         with open(join(exp_dir, "config.json")) as json_file:
             data = load(json_file)
         dataset_id = data['dataset']
+        """
         self.transcode(
             join(exp_dir, 'denoised/0k/'),
             join(exp_dir, 'transcoded'),
@@ -198,8 +199,9 @@ class ExpManager:
             'fp1')
         self.datasetManager.match(
             join(exp_dir,'denoised_fp1'),
-            join('/home/mamoros/exp/datasets/dataset_%d/testing_set/clean_fp1/index' % dataset_id),
+            join('/data/mamoros/exp/datasets/dataset_%d/testing_set/clean_fp1/index' % dataset_id),
             join(exp_dir, 'matches'))
+        """
         self.compute_statistics(join(exp_dir, 'matches'))
 
 

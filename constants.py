@@ -4,7 +4,7 @@ DOCKER_EXEC = "docker exec {name} {cmd}"
 
 NFS_BASE_PATH = '/srv/nfs/bmat_core/fingerprinting_qa/collections/'
 
-ROOT_DIR = '/home/mamoros'
+ROOT_DIR = '/data/mamoros'
 EXP_DIR = ROOT_DIR + '/exp'
 AUDIOFILES_DIR = ROOT_DIR + '/exp/datasets/real/audiofiles/'
 SNIPPETS_DIR = ROOT_DIR + '/exp/datasets/dataset_%s/'

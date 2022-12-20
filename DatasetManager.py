@@ -29,12 +29,12 @@ class DatasetManager:
         folders = []
         for mode in modes:
             mode_str = constants.DATASET_MODES[mode]
-            folder = "/home/mamoros/exp/datasets/dataset_%s/%s_set" % (str(int(self.last_dataset) + 1),
+            folder = "/data/mamoros/exp/datasets/dataset_%s/%s_set" % (str(int(self.last_dataset) + 1),
                                                                     mode_str)
             with open("/home/mamoros/tmp/output.log", "a") as output:
                 call(constants.DOCKER_RUN.format(params="-it --rm",
                                             vol_code="/home/mamoros/build/DNS-Challenge/:/DNS-Challenge",
-                                            vol_data="/home/mamoros/exp/datasets/real:/datasets " \
+                                            vol_data="/data/mamoros/exp/datasets/real:/datasets " \
                                                     "-v %s:/out" % folder,
                                             name="DNS-Challenge",
                                             img="mamoros:DNS_challenge",
@@ -201,15 +201,15 @@ class DatasetManager:
                 ))
         self.run_commands_multiprocess(cmds_file)
         # join all csv created in one and drop empty rows
-        matches = [join(folder_out, x) for x in listdir(folder_out)]
+        print(listdir(folder_out))
+        matches = [join(folder_out, x) for x in listdir(folder_out) if x != 'matches.csv']
         df = concat(map(read_csv, matches), ignore_index=True)
         df.dropna(inplace=True)
         df['Query'] = df.apply(lambda row: row.Query.split('/')[-1], axis=1)
-        df['Reference'] = df.apply(lambda row: row.Query.split('/')[-1], axis=1)
+        df['Reference'] = df.apply(lambda row: row.Reference.split('/')[-1], axis=1)
         # adapt column names to baf-dataset/compute_statistics.py
         df.columns = ['query', 'query_start', 'query_end', 'reference', 'ref_start', 'ref_end', 'score', 'max_score']
         df.to_csv(join(folder_out, 'matches.csv'), index = False)
-
 
 
     def create_index(self, folder):
@@ -234,21 +234,23 @@ class DatasetManager:
         mkdir(join(out_dir, 'clean'))
         mkdir(join(out_dir, 'noisy'))
         data_dir = '/srv/nfs/bmat_core/fingerprinting_qa/collections/siae_venues_microphone_vol1'
-        dataset_file = join(data_dir, 'groundtruth.csv')
+        dataset_file = join("/data/mamoros/exp/datasets/real", 'groundtruth.csv')
         df = read_csv(dataset_file)
-        df.iloc[:, 0] = join(data_dir, 'queries/') + df.iloc[:, 0].astype(str)
-        df.iloc[:, 1] = join(data_dir, 'references/') + df.iloc[:, 1].astype(str)
+        print(df.head())
+        df['query_track'] = join(data_dir, 'queries/') + df['query_track'].str.split('/').str[-1]
+        df['reference_track'] = join(data_dir, 'references/') + df['reference_track'].str.split('/').str[-1]
+        print(df.head())
         queries_in = []
         queries_out = []
         exists_files = [[],[]]
         prev_ref = ''
-        df = df.sort_values(by=df.columns[1], ignore_index=True)
+        df = df.sort_values(by=df.columns[-1], ignore_index=True)
         ref_ids = []
         curr_id = -1
         prev_exists = True
         for i, row in df.iterrows():
-            iterate = [0,1]
-            if prev_ref.split('/')[-1] == row[1].split('/')[-1]:
+            iterate = [0,-1]
+            if prev_ref.split('/')[-1] == row[-1].split('/')[-1]:
                 iterate = [0]
                 exists_files[1].append(exists_files[1][-1])
             elif prev_exists:
@@ -265,7 +267,7 @@ class DatasetManager:
                         df.iloc[i,j] = row[j].replace('vol1', 'vol2')
                 else:
                     exists_files[j].append('1')
-            prev_ref = df.iloc[i,1]
+            prev_ref = df.iloc[i,-1]
 
         df['query found'] = exists_files[0]
         df['reference found'] = exists_files[1]
@@ -275,17 +277,21 @@ class DatasetManager:
         df.reset_index(inplace=True, drop = True)
         df.to_csv(join(out_dir, 'ground_truth_post.csv'))
         df['Index'] = df.index
+        print(df.head())
         df['query_filename'] = df['Index'].apply(lambda row: "fileid_%s.fp1" % row)
         df['reference_filename'] = df['reference ids'].apply(lambda row: "fileid_%s.fp1" % row)
-        df_annotations = df[['query_filename', 'reference_filename']]
+        df_annotations = df[['query_filename', 'reference_filename', 'query_begin_time', 'query_end_time']]
+        df_annotations.columns = ['query', 'reference', 'query_start', 'query_end']
+        df_annotations['x_tag'] = 'unanimity'
         df_annotations.to_csv(join(out_dir, 'annotations.csv'), index=False)
+        df.to_csv(join(out_dir, 'test.csv'), index=False)
 
         queries_in = df.iloc[:, 0].astype(str)
         queries_out = join(out_dir, 'noisy/fileid_%s.wav')
 
-        df['ref_name'] = df.iloc[:, 1].str.split('/').str[-1]
+        df['ref_name'] = df.reference_track.str.split('/').str[-1]
         df = df.drop_duplicates('ref_name')
-        refs_in = df.iloc[:, 1].astype(str)
+        refs_in = df.reference_track.astype(str)
         refs_out = join(out_dir, 'clean/fileid_%s.wav')
 
         self.convert_audio_multiprocess(refs_in, queries_in, refs_out, queries_out,
@@ -299,7 +305,7 @@ class DatasetManager:
         self.extract_figerprint(join(out_dir, 'noisy'), join(out_dir, 'noisy_fp1'), 'fp1')
         self.match(
             join(out_dir, 'noisy_fp1'),
-            '/home/mamoros/exp/datasets/dataset_%s/testing_set/clean_fp1/index' % str(self.last_dataset + 1),
+            '/data/mamoros/exp/datasets/dataset_%s/testing_set/clean_fp1/index' % str(self.last_dataset + 1),
             join(out_dir, 'matches'))
 
 
@@ -310,7 +316,7 @@ class DatasetManager:
             mkdir(dataset_path)
             mkdir(join(dataset_path, 'clean'))
             mkdir(join(dataset_path, 'noisy'))
-            self.cp_nfsdataset_audio2snippet('/home/mamoros/exp/datasets/real/better_alignment.csv',
+            self.cp_nfsdataset_audio2snippet('/data/mamoros/exp/datasets/real/better_alignment.csv',
                                             min_snippet_len = 5,
                                             copy=True,
                                             max_samples=0,
