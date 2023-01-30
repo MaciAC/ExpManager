@@ -51,7 +51,7 @@ class ExpManager:
             self.datasetManager.create_dataset()
             data['dataset'] = self.datasetManager.last_dataset
         with open(join(constants.EXP_DIR, "exp_%s" % str(exp_id), "config.json"), 'w') as json_file:
-            dump(data, json_file)
+            dump(data, json_file, indent= 4)
 
 
     def print_experiments(self):
@@ -111,6 +111,12 @@ class ExpManager:
     def serve_tensorboard(self):
         exp_id = self.choose_experiment()
         with open("/home/mamoros/tmp/output.log", "a") as output:
+                print(constants.DOCKER_RUN.format(params="-it --rm -p 8050:8050",
+                                            vol_code="/data/mamoros/exp/exp_%s/tensorboard/:/tensorboard" % str(exp_id),
+                                            vol_data="/data/mamoros/exp/exp_%s/tensorboard/:/tensorboard" % str(exp_id),
+                                            name="tensorboard",
+                                            img="tensorflow/tensorflow",
+                                            cmd="tensorboard --logdir /tensorboard --port 8050 --bind_all"))
                 call(constants.DOCKER_RUN.format(params="-it --rm -p 8050:8050",
                                             vol_code="/data/mamoros/exp/exp_%s/tensorboard/:/tensorboard" % str(exp_id),
                                             vol_data="/data/mamoros/exp/exp_%s/tensorboard/:/tensorboard" % str(exp_id),
@@ -160,34 +166,13 @@ class ExpManager:
         self.datasetManager.run_commands_multiprocess("cat {} | xargs -I % -n 1 -P 8 sh -c 'echo %; %'".format(cmds_file))
 
 
-
-    def compute_statistics(self, folder):
-        """
-    docker run --rm -it -v /home/mamoros/build/baf-dataset:/baf-dataset -v /home/mamoros/exp/datasets/dataset_4/testing_set/:/testing_set
-        mamoros:baf-dataset python3 baf-dataset/compute_statistics.py testing_set/matches/matches.csv testing_set/annotations.csv
-        """
-        with open("/home/mamoros/tmp/output.log", "a") as output:
-            call(constants.DOCKER_RUN.format(params="-it --rm ",
-                                        vol_code="/home/mamoros/build/baf-dataset:/baf-dataset",
-                                        vol_data='/data/mamoros/exp/datasets/dataset_4/testing_set/:/testing_set',
-                                        name="baf_compute_statistics",
-                                        img="mamoros:baf-dataset",
-                                        cmd="python3 baf-dataset/compute_statistics.py testing_set/matches/matches.csv testing_set/annotations.csv"),
-                 shell=True,
-                 stdout=output,
-                 stderr=output)
-
     def evaluation(self):
-        """
-
-        evaluate -> https://github.com/guillemcortes/baf-dataset/blob/main/compute_statistics.py
-        """
         exp_id = self.choose_experiment()
         exp_dir = '/data/mamoros/exp/exp_%d' % exp_id
         with open(join(exp_dir, "config.json")) as json_file:
             data = load(json_file)
         dataset_id = data['dataset']
-        """
+        dataset_dir = '/data/mamoros/exp/datasets/dataset_%d/testing_set/' % dataset_id
         self.transcode(
             join(exp_dir, 'denoised/0k/'),
             join(exp_dir, 'transcoded'),
@@ -199,10 +184,9 @@ class ExpManager:
             'fp1')
         self.datasetManager.match(
             join(exp_dir,'denoised_fp1'),
-            join('/data/mamoros/exp/datasets/dataset_%d/testing_set/clean_fp1/index' % dataset_id),
+            join(dataset_dir, 'clean_fp1/index'),
             join(exp_dir, 'matches'))
-        """
-        self.compute_statistics(join(exp_dir, 'matches'))
+        self.datasetManager.compute_statistics(join(exp_dir, 'matches'), dataset_dir)
 
 
 
